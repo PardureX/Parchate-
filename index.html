@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#111111">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <title>Parchate™</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- STATUS BAR (solo decorativo en móvil) -->
+  <div class="app-shell">
+
+    <!-- TOP BAR -->
+    <header class="topbar">
+      <span class="logo">Parchate<sup>™</sup></span>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="themeToggleBtn" aria-label="Cambiar tema">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
+        <button class="icon-btn" id="settingsBtn" aria-label="Configuración">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- TABS -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="player">Reproductor</button>
+      <button class="tab" data-tab="eq">Ecualizador</button>
+      <button class="tab" data-tab="playlist">Lista</button>
+    </nav>
+
+    <!-- ===================== TAB: REPRODUCTOR ===================== -->
+    <section class="tab-panel active" id="tab-player">
+
+      <!-- CARÁTULA -->
+      <div class="cover-zone" id="coverZone">
+        <div class="cover-art" id="coverArt">
+          <div class="cover-default" id="coverDefault">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
+          <img id="coverImg" src="" alt="Carátula" style="display:none">
+        </div>
+        <div class="cover-overlay">
+          <p class="song-title" id="songTitle">Selecciona una canción</p>
+          <p class="song-artist" id="songArtist">—</p>
+        </div>
+        <div class="cover-badge" id="coverBadge">0 / 0</div>
+
+        <!-- Botón cambiar foto de fondo -->
+        <button class="cover-photo-btn" id="coverPhotoBtn" aria-label="Cambiar foto de fondo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </button>
+        <input type="file" id="bgPhotoInput" accept="image/*" style="display:none">
+      </div>
+
+      <!-- CONTROLES -->
+      <div class="player-controls">
+
+        <!-- Barra de progreso -->
+        <div class="progress-section">
+          <div class="progress-bar-wrap" id="progressWrap">
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="progressFill"></div>
+            </div>
+          </div>
+          <div class="time-row">
+            <span id="timeCurrentEl">0:00</span>
+            <span id="timeTotalEl">0:00</span>
+          </div>
+        </div>
+
+        <!-- Botones principales -->
+        <div class="main-controls">
+          <button class="ctrl-btn" id="shuffleBtn" aria-label="Aleatorio">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+          </button>
+          <button class="ctrl-btn" id="prevBtn" aria-label="Anterior">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+          </button>
+          <button class="play-btn" id="playBtn" aria-label="Reproducir">
+            <svg id="iconPlay" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <svg id="iconPause" width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          </button>
+          <button class="ctrl-btn" id="nextBtn" aria-label="Siguiente">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+          </button>
+          <button class="ctrl-btn" id="repeatBtn" aria-label="Repetir">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          </button>
+        </div>
+
+        <!-- Volumen -->
+        <div class="volume-row">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>
+          <input type="range" class="slider" id="volumeSlider" min="0" max="1" step="0.01" value="1" aria-label="Volumen">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===================== TAB: ECUALIZADOR ===================== -->
+    <section class="tab-panel" id="tab-eq">
+      <div class="eq-panel">
+
+        <!-- Amplificador -->
+        <div class="eq-block">
+          <div class="eq-block-header">
+            <span class="eq-block-title">Amplificador</span>
+            <span class="eq-block-val accent" id="gainLabel">1.0x</span>
+          </div>
+          <input type="range" class="slider" id="gainSlider" min="1" max="4" step="0.1" value="1" aria-label="Ganancia">
+          <div class="eq-hint">Fuerza el volumen más allá del 100% — útil para parlantes suaves</div>
+        </div>
+
+        <!-- EQ 3 bandas -->
+        <div class="eq-block">
+          <div class="eq-block-header">
+            <span class="eq-block-title">Ecualizador</span>
+          </div>
+          <div class="eq-bands">
+            <div class="band">
+              <span class="band-name">Graves</span>
+              <span class="band-freq">80 Hz</span>
+              <div class="vert-slider-wrap">
+                <input type="range" class="slider vert" id="bassSlider" min="-12" max="12" step="1" value="0" aria-label="Graves" orient="vertical">
+              </div>
+              <span class="band-val" id="bassLabel">0 dB</span>
+            </div>
+            <div class="band">
+              <span class="band-name">Medios</span>
+              <span class="band-freq">1 kHz</span>
+              <div class="vert-slider-wrap">
+                <input type="range" class="slider vert" id="midSlider" min="-12" max="12" step="1" value="0" aria-label="Medios" orient="vertical">
+              </div>
+              <span class="band-val" id="midLabel">0 dB</span>
+            </div>
+            <div class="band">
+              <span class="band-name">Agudos</span>
+              <span class="band-freq">8 kHz</span>
+              <div class="vert-slider-wrap">
+                <input type="range" class="slider vert" id="trebleSlider" min="-12" max="12" step="1" value="0" aria-label="Agudos" orient="vertical">
+              </div>
+              <span class="band-val" id="trebleLabel">0 dB</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Presets -->
+        <div class="eq-block">
+          <div class="eq-block-header">
+            <span class="eq-block-title">Presets</span>
+          </div>
+          <div class="preset-row">
+            <button class="preset-btn active" data-preset="flat">Plano</button>
+            <button class="preset-btn" data-preset="bass">Bajos+</button>
+            <button class="preset-btn" data-preset="vocal">Vocal</button>
+            <button class="preset-btn" data-preset="parlante">Parlante</button>
+            <button class="preset-btn" data-preset="audifono">Audífonos</button>
+          </div>
+        </div>
+
+        <!-- Personalización de tema -->
+        <div class="eq-block">
+          <div class="eq-block-header">
+            <span class="eq-block-title">Color de la app</span>
+          </div>
+          <div class="color-swatches">
+            <button class="swatch active" data-color="#a78bfa" style="background:#a78bfa" aria-label="Morado"></button>
+            <button class="swatch" data-color="#34d399" style="background:#34d399" aria-label="Verde"></button>
+            <button class="swatch" data-color="#f472b6" style="background:#f472b6" aria-label="Rosa"></button>
+            <button class="swatch" data-color="#fb923c" style="background:#fb923c" aria-label="Naranja"></button>
+            <button class="swatch" data-color="#38bdf8" style="background:#38bdf8" aria-label="Azul"></button>
+            <button class="swatch" data-color="#facc15" style="background:#facc15" aria-label="Amarillo"></button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===================== TAB: PLAYLIST ===================== -->
+    <section class="tab-panel" id="tab-playlist">
+      <div class="playlist-panel">
+
+        <!-- Cargar archivos -->
+        <div class="load-zone" id="loadZone">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p class="load-text">Toca para cargar canciones</p>
+          <p class="load-hint">MP3, WAV, OGG, M4A</p>
+          <input type="file" id="fileInput" accept="audio/*" multiple style="display:none">
+        </div>
+
+        <!-- Lista de canciones -->
+        <ul class="tracklist" id="tracklist"></ul>
+
+      </div>
+    </section>
+
+  </div><!-- end app-shell -->
+
+  <!-- Audio element oculto -->
+  <audio id="audioEl" preload="metadata"></audio>
+
+  <script src="app.js"></script>
+</body>
+</html>
