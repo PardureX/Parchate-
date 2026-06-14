@@ -23,7 +23,8 @@ const state = {
     bgPhoto: null
   },
   duration: 0,
-  currentTime: 0
+  currentTime: 0,
+  isRadio: false
 };
 
 // API de Radio Browser — CORS abierto, sin key, estaciones de radio en vivo
@@ -299,7 +300,7 @@ function loadFiles(files) {
   fileArr.forEach(file => {
     const url = URL.createObjectURL(file);
     const name = file.name.replace(/\.[^.]+$/, '');
-    const track = { url, title: name, artist: 'Local', duration: 0, cover: null };
+    const track = { url, title: name, artist: 'Local', duration: 0, cover: null, isRadio: false };
 
     const tmpAudio = new Audio();
     tmpAudio.src = url;
@@ -375,7 +376,8 @@ function mostrarFavoritas() {
         title: fav.name,
         artist: fav.genre,
         duration: 0,
-        cover: fav.favicon
+        cover: fav.favicon,
+        isRadio: true
       };
       state.tracks.push(nuevoTrack);
       loadTrack(state.tracks.length - 1, true);
@@ -467,7 +469,8 @@ async function buscarMusicaOnline() {
           title: name,
           artist: genre,
           duration: 0,
-          cover: favicon
+          cover: favicon,
+          isRadio: true
         };
 
         state.tracks.push(nuevoTrack);
@@ -583,7 +586,9 @@ function loadTrack(index, autoPlay) {
     radioAudio = null;
   }
   
-  if (track.duration === 0) {
+  state.isRadio = !!track.isRadio;
+
+  if (state.isRadio) {
     radioAudio = new Audio();
     radioAudio.src = track.url;
     radioAudio.volume = state.volume;
@@ -601,7 +606,7 @@ function loadTrack(index, autoPlay) {
 }
 
 function play() {
-  if (radioAudio && state.duration === 0) {
+  if (state.isRadio && radioAudio) {
     radioAudio.volume = state.volume;
     radioAudio.play().then(() => {
       state.isPlaying = true;
@@ -641,7 +646,7 @@ function togglePlay() {
 function prevTrack() {
   if (state.tracks.length === 0) return;
   if (state.currentTime > 3) {
-    if (radioAudio) radioAudio.currentTime = 0;
+    if (state.isRadio && radioAudio) radioAudio.currentTime = 0;
     else audioEl.currentTime = 0;
     return;
   }
