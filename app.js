@@ -1,5 +1,5 @@
 /* ============================================
-   PARCHATE™ — app.js (Buscador de Radio en Vivo)
+   PARCHATE™ — app.js (Buscador de Radio en Vivo + Favoritos)
    ============================================ */
 
 'use strict';
@@ -28,6 +28,48 @@ const state = {
 
 // API de Radio Browser — CORS abierto, sin key, estaciones de radio en vivo
 const RADIO_API = 'https://de1.api.radio-browser.info/json';
+
+// Audio alternativo para streams de radio (sin Web Audio API)
+let radioAudio = null;
+
+// ============================================
+// SISTEMA DE FAVORITOS (localStorage)
+// ============================================
+function getFavoritas() {
+  try {
+    return JSON.parse(localStorage.getItem('parchate_favoritas') || '[]');
+  } catch(e) {
+    return [];
+  }
+}
+
+function guardarFavorita(station) {
+  const favoritas = getFavoritas();
+  const url = station.url_resolved || station.url;
+  if (!favoritas.find(f => f.url === url)) {
+    favoritas.push({
+      name: station.name,
+      url: url,
+      genre: station.tags || station.country || '',
+      favicon: station.favicon || '',
+      codec: station.codec || 'MP3',
+      bitrate: station.bitrate || 0
+    });
+    localStorage.setItem('parchate_favoritas', JSON.stringify(favoritas));
+    return true;
+  }
+  return false;
+}
+
+function eliminarFavorita(url) {
+  const favoritas = getFavoritas().filter(f => f.url !== url);
+  localStorage.setItem('parchate_favoritas', JSON.stringify(favoritas));
+  return favoritas;
+}
+
+function esFavorita(url) {
+  return getFavoritas().some(f => f.url === url);
+}
 
 // ============================================
 // WEB AUDIO API — cadena de nodos
@@ -115,6 +157,7 @@ const themeToggleBtn = document.getElementById('themeToggleBtn');
 const ytSearchInput  = document.getElementById('ytSearchInput');
 const ytSearchBtn    = document.getElementById('ytSearchBtn');
 const ytResults      = document.getElementById('ytResults');
+const ytFavorites    = document.getElementById('ytFavorites');
 
 // ============================================
 // RENDER
@@ -289,8 +332,70 @@ function loadFiles(files) {
 }
 
 // ============================================
+// MOSTRAR FAVORITAS
+// ============================================
+function mostrarFavoritas() {
+  const favoritas = getFavoritas();
+  if (!ytFavorites) return;
+
+  if (favoritas.length === 0) {
+    ytFavorites.innerHTML = `
+      <div style="text-align:center;padding:1rem;color:var(--txt-3);font-size:12px;margin-bottom:16px">
+        ⭐ No tienes emisoras favoritas aún<br>
+        <small>Busca una estación y haz clic en ☆ para guardarla</small>
+      </div>`;
+    return;
+  }
+
+  ytFavorites.innerHTML = `
+    <div style="font-size:13px;font-weight:bold;color:var(--txt-2);margin-bottom:8px;padding:0 4px">
+      ⭐ Mis Emisoras Favoritas
+    </div>
+    ${favoritas.map((fav, i) => `
+      <div class="yt-result-card fav-card" style="position:relative;cursor:pointer;margin-bottom:8px" data-index="${i}">
+        <div class="yt-card-thumb" style="display:flex;align-items:center;justify-content:center;background:var(--ac);font-size:24px;min-height:60px;overflow:hidden">
+          ${fav.favicon ? `<img src="${fav.favicon}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='📻'">` : '📻'}
+        </div>
+        <div class="yt-card-info">
+          <div class="yt-card-title">${escHtml(fav.name)}</div>
+          <div class="yt-card-author">${escHtml(fav.genre)} · ${fav.codec} ${fav.bitrate > 0 ? fav.bitrate + 'kbps' : ''}</div>
+        </div>
+        <button class="fav-remove-btn" style="position:absolute;top:5px;right:5px;background:rgba(0,0,0,0.6);border:none;color:gold;font-size:16px;padding:2px 6px;border-radius:50%;cursor:pointer;z-index:2">⭐</button>
+      </div>
+    `).join('')}
+  `;
+
+  // Eventos para cada favorita
+  ytFavorites.querySelectorAll('.fav-card').forEach((card) => {
+    const i = parseInt(card.dataset.index);
+    card.addEventListener('click', () => {
+      const fav = favoritas[i];
+      const nuevoTrack = {
+        url: fav.url,
+        title: fav.name,
+        artist: fav.genre,
+        duration: 0,
+        cover: fav.favicon
+      };
+      state.tracks.push(nuevoTrack);
+      loadTrack(state.tracks.length - 1, true);
+    });
+
+    // Eliminar favorita
+    card.querySelector('.fav-remove-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      eliminarFavorita(favoritas[i].url);
+      mostrarFavoritas();
+      // Actualizar estrellas en resultados si hay
+      if (ytResults.children.length > 0 && !ytResults.querySelector('.fav-btn')) {
+        // Solo recargar favoritas
+      }
+    });
+  });
+}
+
+// ============================================
 // BUSCADOR DE RADIO EN VIVO — RADIO BROWSER API
-// CORS abierto, sin API key, miles de estaciones
 // ============================================
 async function buscarMusicaOnline() {
   const query = ytSearchInput.value.trim();
@@ -326,18 +431,21 @@ async function buscarMusicaOnline() {
     ytResults.innerHTML = '';
 
     stations.forEach(station => {
-      if (!station.url_resolved && !station.url) return;
+      const rawUrl = station.url_resolved || station.url;
+      if (!rawUrl) return;
 
+      const streamUrl = rawUrl;
       const name = station.name || 'Sin nombre';
       const genre = station.tags || station.country || 'Desconocido';
       const bitrate = station.bitrate || 0;
       const listeners = station.clickcount || 0;
       const favicon = station.favicon || '';
-      const streamUrl = station.url_resolved || station.url;
       const codec = station.codec || 'MP3';
+      const isFav = esFavorita(streamUrl);
 
       const card = document.createElement('div');
       card.className = 'yt-result-card';
+      card.style.position = 'relative';
 
       card.innerHTML = `
         <div class="yt-card-thumb" style="display:flex;align-items:center;justify-content:center;background:var(--ac);font-size:32px;min-height:90px;overflow:hidden">
@@ -349,8 +457,10 @@ async function buscarMusicaOnline() {
           <div class="yt-card-duration">🎧 ${listeners.toLocaleString()} oyentes</div>
         </div>
         <button class="yt-card-add-btn">▶ Sintonizar</button>
+        <button class="fav-btn" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);border:none;color:${isFav ? 'gold' : 'white'};font-size:18px;padding:4px 8px;border-radius:50%;cursor:pointer;z-index:2">${isFav ? '⭐' : '☆'}</button>
       `;
 
+      // Evento para sintonizar
       const agregarALista = () => {
         const nuevoTrack = {
           url: streamUrl,
@@ -376,6 +486,23 @@ async function buscarMusicaOnline() {
       });
 
       card.addEventListener('click', agregarALista);
+
+      // Evento para favorito
+      const favBtn = card.querySelector('.fav-btn');
+      favBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (esFavorita(streamUrl)) {
+          eliminarFavorita(streamUrl);
+          favBtn.textContent = '☆';
+          favBtn.style.color = 'white';
+        } else {
+          guardarFavorita(station);
+          favBtn.textContent = '⭐';
+          favBtn.style.color = 'gold';
+        }
+        mostrarFavoritas();
+      });
+
       ytResults.appendChild(card);
     });
 
@@ -441,14 +568,31 @@ function actualizarPantallaDeBloqueo(track) {
 }
 
 // ============================================
-// REPRODUCCIÓN
+// REPRODUCCIÓN (CORREGIDA PARA RADIO)
 // ============================================
 function loadTrack(index, autoPlay) {
   if (index < 0 || index >= state.tracks.length) return;
   state.currentIndex = index;
   const track = state.tracks[index];
-  audioEl.src = track.url;
-  audioEl.volume = state.volume;
+  
+  console.log('🎵 Cargando:', track.title);
+  console.log('🔗 URL:', track.url);
+  
+  if (radioAudio) {
+    radioAudio.pause();
+    radioAudio = null;
+  }
+  
+  if (track.duration === 0) {
+    radioAudio = new Audio();
+    radioAudio.src = track.url;
+    radioAudio.volume = state.volume;
+    radioAudio.crossOrigin = 'anonymous';
+  } else {
+    audioEl.src = track.url;
+    audioEl.volume = state.volume;
+  }
+  
   state.isPlaying = false;
   state.currentTime = 0;
   state.duration = track.duration || 0;
@@ -457,6 +601,19 @@ function loadTrack(index, autoPlay) {
 }
 
 function play() {
+  if (radioAudio && state.duration === 0) {
+    radioAudio.volume = state.volume;
+    radioAudio.play().then(() => {
+      state.isPlaying = true;
+      console.log('✅ Radio sonando');
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
+      render();
+    }).catch((err) => {
+      console.error('❌ Error radio:', err.message);
+    });
+    return;
+  }
+  
   if (!audioEl.src) return;
   initAudioContext();
   if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -464,10 +621,13 @@ function play() {
     state.isPlaying = true;
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
     render();
-  }).catch(() => {});
+  }).catch((err) => {
+    console.error('❌ Error al reproducir:', err.message);
+  });
 }
 
 function pause() {
+  if (radioAudio) radioAudio.pause();
   audioEl.pause();
   state.isPlaying = false;
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
@@ -481,7 +641,8 @@ function togglePlay() {
 function prevTrack() {
   if (state.tracks.length === 0) return;
   if (state.currentTime > 3) {
-    audioEl.currentTime = 0;
+    if (radioAudio) radioAudio.currentTime = 0;
+    else audioEl.currentTime = 0;
     return;
   }
   let idx = state.currentIndex - 1;
@@ -525,6 +686,7 @@ repeatBtn.addEventListener('click', () => {
 volumeSlider.addEventListener('input', () => {
   state.volume = parseFloat(volumeSlider.value);
   audioEl.volume = state.volume;
+  if (radioAudio) radioAudio.volume = state.volume;
   saveToStorage();
 });
 
@@ -712,12 +874,13 @@ document.addEventListener('keydown', (e) => {
 // ============================================
 loadFromStorage();
 render();
+mostrarFavoritas();
 
 document.querySelectorAll('.swatch').forEach(sw => {
   sw.classList.toggle('active', sw.dataset.color === state.theme.accent);
 });
 
-console.log('%cParchate™ listo — Radio Browser activo 📻', 'color:' + state.theme.accent + ';font-size:16px;font-weight:bold');
+console.log('%cParchate™ listo — Radio Browser + Favoritos ⭐📻', 'color:' + state.theme.accent + ';font-size:16px;font-weight:bold');
 
 // =======================================================================
 // MOTOR VISUAL: CALAVERA REALISTA 3D + NOTAS DESDE LA GARGANTA
