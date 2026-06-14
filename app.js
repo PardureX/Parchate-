@@ -1,5 +1,5 @@
 /* ============================================
-   PARCHATE™ — app.js (Actualizado con Buscador de Audio Libre)
+   PARCHATE™ — app.js (Buscador de Audio con SoundCloud)
    ============================================ */
 
 'use strict';
@@ -12,7 +12,7 @@ const state = {
   currentIndex: -1,
   isPlaying: false,
   shuffle: false,
-  repeat: false,        // 'none' | 'one' | 'all'
+  repeat: false,
   repeatMode: 'none',
   volume: 1,
   gain: 1,
@@ -26,12 +26,11 @@ const state = {
   currentTime: 0
 };
 
-// Instancia pública y estable de Invidious (Filtro limpiador de anuncios)
-const INVIDIOUS_INSTANCE = 'https://yewtu.be'; 
+// Client ID público de SoundCloud (el mismo que usa su widget oficial)
+const SC_CLIENT_ID = 'a3e059563d7fd3372b49b37f00a00bcf';
 
 // ============================================
 // WEB AUDIO API — cadena de nodos
-// AudioSource → GainNode → Bass → Mid → Treble → Destination
 // ============================================
 let audioCtx = null;
 let sourceNode = null;
@@ -61,7 +60,6 @@ function initAudioContext() {
   trebleFilter.type = 'highshelf';
   trebleFilter.frequency.value = 8000;
 
-  // Conectar la cadena nativa
   sourceNode
     .connect(gainNode)
     .connect(bassFilter)
@@ -114,33 +112,27 @@ const coverPhotoBtn  = document.getElementById('coverPhotoBtn');
 const bgPhotoInput   = document.getElementById('bgPhotoInput');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 
-// Elementos del nuevo buscador
 const ytSearchInput  = document.getElementById('ytSearchInput');
 const ytSearchBtn    = document.getElementById('ytSearchBtn');
 const ytResults      = document.getElementById('ytResults');
 
 // ============================================
-// RENDER — actualiza la UI desde el estado
+// RENDER
 // ============================================
 function render() {
-  // --- Play / Pause ---
   iconPlay.style.display  = state.isPlaying ? 'none' : 'block';
   iconPause.style.display = state.isPlaying ? 'block' : 'none';
 
-  // --- Botones activos ---
   shuffleBtn.classList.toggle('active', state.shuffle);
   repeatBtn.classList.toggle('active', state.repeatMode !== 'none');
 
-  // --- Progreso ---
   const pct = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
   progressFill.style.width = pct.toFixed(2) + '%';
   timeCurrentEl.textContent = formatTime(state.currentTime);
   timeTotalEl.textContent   = formatTime(state.duration);
 
-  // --- Volumen ---
   volumeSlider.value = state.volume;
 
-  // --- Info canción ---
   if (state.currentIndex >= 0 && state.tracks[state.currentIndex]) {
     const t = state.tracks[state.currentIndex];
     songTitle.textContent  = t.title;
@@ -154,8 +146,6 @@ function render() {
       coverImg.style.display = 'none';
       coverDefault.style.display = 'flex';
     }
-    
-    // Actualizar controles nativos de la pantalla de bloqueo en el celular
     actualizarPantallaDeBloqueo(t);
   } else {
     songTitle.textContent  = 'Selecciona una canción';
@@ -165,7 +155,6 @@ function render() {
     coverDefault.style.display = 'flex';
   }
 
-  // --- EQ labels ---
   gainLabel.textContent  = state.gain.toFixed(1) + 'x';
   gainSlider.value       = state.gain;
   bassLabel.textContent  = fmtDb(state.eq.bass);
@@ -175,14 +164,11 @@ function render() {
   midSlider.value        = state.eq.mid;
   trebleSlider.value     = state.eq.treble;
 
-  // --- Tracklist ---
   renderTracklist();
 
-  // --- Tema ---
   document.documentElement.style.setProperty('--ac', state.theme.accent);
   document.documentElement.setAttribute('data-theme', state.theme.darkMode ? 'dark' : 'light');
 
-  // --- Fondo personalizado ---
   if (state.theme.bgPhoto) {
     coverDefault.style.backgroundImage = 'url(' + state.theme.bgPhoto + ')';
     coverDefault.style.backgroundSize = 'cover';
@@ -277,9 +263,7 @@ function loadFiles(files) {
     tmpAudio.addEventListener('loadedmetadata', () => {
       track.duration = tmpAudio.duration;
       loaded++;
-      if (loaded === fileArr.length) {
-        render();
-      }
+      if (loaded === fileArr.length) render();
     }, { once: true });
 
     if (window.jsmediatags) {
@@ -300,71 +284,130 @@ function loadFiles(files) {
     state.tracks.push(track);
   });
 
-  if (state.currentIndex < 0 && fileArr.length > 0) {
-    loadTrack(0, false);
-  }
+  if (state.currentIndex < 0 && fileArr.length > 0) loadTrack(0, false);
   render();
 }
 
 // ============================================
-// LOGICA DEL MOTOR DE BÚSQUEDA (SIN ANUNCIOS)
+// BUSCADOR DE MÚSICA — SOUNDCLOUD API
+// Canciones completas, sin CORS
 // ============================================
 async function buscarMusicaOnline() {
   const query = ytSearchInput.value.trim();
   if (!query) return;
 
-  ytResults.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--txt-3);font-size:14px">Buscando en el servidor limpio...</div>';
+  ytResults.innerHTML = `
+    <div style="text-align:center;padding:2rem;color:var(--txt-3);font-size:14px">
+      🎵 Buscando en SoundCloud...
+    </div>`;
 
   try {
-    const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(INVIDIOUS_INSTANCE + '/api/v1/search?q=' + encodeURIComponent(query) + '&type=video')}`);
-    const videos = await res.json();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-    if (!videos || videos.length === 0) {
-      ytResults.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--txt-3)">No se encontraron pistas limpias.</div>';
+    const apiUrl = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=8&client_id=${SC_CLIENT_ID}`;
+    
+    const res = await fetch(apiUrl, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) throw new Error(`Error del servidor: ${res.status}`);
+
+    const data = await res.json();
+    const tracks = data.collection || [];
+
+    if (!tracks || tracks.length === 0) {
+      ytResults.innerHTML = `
+        <div style="text-align:center;padding:2rem;color:var(--txt-3)">
+          🎵 No se encontraron resultados para "${escHtml(query)}"
+        </div>`;
       return;
     }
 
-    ytResults.innerHTML = ''; 
+    ytResults.innerHTML = '';
 
-    videos.slice(0, 6).forEach(video => {
+    tracks.forEach(track => {
+      const title = track.title || 'Sin título';
+      const artist = track.user ? track.user.username : 'Desconocido';
+      const duration = (track.duration || 0) / 1000;
+      const cover = track.artwork_url ? track.artwork_url.replace('large', 't300x300') : (track.user ? track.user.avatar_url : '');
+      const streamUrl = track.stream_url ? `${track.stream_url}?client_id=${SC_CLIENT_ID}` : '';
+
+      if (!streamUrl) return;
+
       const card = document.createElement('div');
       card.className = 'yt-result-card';
-      
-      const thumbnail = video.videoThumbnails ? video.videoThumbnails.find(t => t.quality === 'medium')?.url || video.videoThumbnails[0].url : '';
 
       card.innerHTML = `
-        <img src="${thumbnail}" class="yt-card-thumb" alt="Cover">
+        <img src="${cover}" class="yt-card-thumb" alt="Carátula" 
+             onerror="this.style.display='none'">
         <div class="yt-card-info">
-          <div class="yt-card-title">${escHtml(video.title)}</div>
-          <div class="yt-card-author">${escHtml(video.author)}</div>
-          <div class="yt-card-duration">${formatTime(video.lengthSeconds)}</div>
+          <div class="yt-card-title">${escHtml(title)}</div>
+          <div class="yt-card-author">${escHtml(artist)}</div>
+          <div class="yt-card-duration">${formatTime(duration)}</div>
         </div>
         <button class="yt-card-add-btn">▶ Escuchar</button>
       `;
 
-      card.addEventListener('click', () => {
+      const agregarALista = () => {
         const nuevoTrack = {
-          url: `${INVIDIOUS_INSTANCE}/latest_version?id=${video.videoId}&listen=1`,
-          title: video.title,
-          artist: video.author,
-          duration: video.lengthSeconds,
-          cover: thumbnail
+          url: streamUrl,
+          title: title,
+          artist: artist,
+          duration: duration,
+          cover: cover
         };
 
         state.tracks.push(nuevoTrack);
-        const indexAsignado = state.tracks.length - 1;
-        loadTrack(indexAsignado, true);
-        
-        const btn = card.querySelector('.yt-card-add-btn');
-        btn.textContent = '🎵 Sonando';
-        btn.style.background = 'var(--ac)';
+        loadTrack(state.tracks.length - 1, true);
+
+        card.querySelectorAll('.yt-card-add-btn').forEach(btn => {
+          btn.textContent = '🎵 Sonando';
+          btn.style.background = 'var(--ac)';
+          btn.style.color = 'white';
+        });
+      };
+
+      card.querySelector('.yt-card-add-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        agregarALista();
       });
 
+      card.addEventListener('click', agregarALista);
       ytResults.appendChild(card);
     });
 
+    if (ytResults.children.length === 0) {
+      ytResults.innerHTML = `
+        <div style="text-align:center;padding:2rem;color:var(--txt-3)">
+          🎵 No se encontraron pistas reproducibles
+        </div>`;
+    }
+
   } catch (error) {
-    ytResults.innerHTML = '<div style="text-align:center;padding:2rem;color:#f87171">Error de conexión con el motor. Intenta de nuevo.</div>';
+    console.error('Error en búsqueda:', error);
+
+    if (error.name === 'AbortError') {
+      ytResults.innerHTML = `
+        <div style="text-align:center;padding:2rem;color:#fbbf24">
+          ⏱️ La búsqueda tardó demasiado
+          <button onclick="buscarMusicaOnline()" 
+                  style="display:block;margin:1rem auto 0;padding:0.5rem 1.5rem;background:var(--ac);color:white;border:none;border-radius:8px;cursor:pointer">
+            🔄 Reintentar
+          </button>
+        </div>`;
+    } else {
+      ytResults.innerHTML = `
+        <div style="text-align:center;padding:2rem;color:#f87171">
+          <strong>😔 No se pudo buscar</strong>
+          <small style="color:var(--txt-3);display:block;margin-top:0.5rem">
+            ${escHtml(error.message)}
+          </small>
+          <button onclick="buscarMusicaOnline()" 
+                  style="display:block;margin:1rem auto 0;padding:0.5rem 1.5rem;background:var(--ac);color:white;border:none;border-radius:8px;cursor:pointer">
+            🔄 Reintentar
+          </button>
+        </div>`;
+    }
   }
 }
 
@@ -374,14 +417,14 @@ ytSearchInput.addEventListener('keydown', (e) => {
 });
 
 // ============================================
-// MEDIASESSION API (ESCUCHAR CON PANTALLA APAGADA)
+// MEDIASESSION API
 // ============================================
 function actualizarPantallaDeBloqueo(track) {
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title,
       artist: track.artist || 'Parchate™',
-      album: 'Streaming Sin Anuncios',
+      album: 'SoundCloud',
       artwork: [
         { src: track.cover || 'https://images.unsplash.com/photo-1614680376593-902f74fa0d41?q=80&w=250&auto=format&fit=crop', sizes: '256x256', type: 'image/jpeg' }
       ]
@@ -619,44 +662,28 @@ loadZone.addEventListener('drop', (e) => {
 });
 
 // ============================================
-// RE-ESTRUCTURACIÓN DINÁMICA DE PESTAÑAS (TABS)
-// Corrección: Soporte universal para la rueda de configuraciones
+// TABS
 // ============================================
 const elementosNavegacion = document.querySelectorAll('.tab, #configBtn, [data-tab="config"]');
 
 elementosNavegacion.forEach(tab => {
   tab.addEventListener('click', () => {
-    // 1. Quitar estado activo a todos los botones de navegación
     elementosNavegacion.forEach(t => t.classList.remove('active'));
-    
-    // 2. Ocultar todos los paneles de la app por completo
     document.querySelectorAll('.tab-panel').forEach(p => {
       p.classList.remove('active');
-      p.style.display = 'none'; 
+      p.style.display = 'none';
     });
-    
-    // 3. Activar visualmente el botón presionado
     tab.classList.add('active');
-    
-    // 4. Buscar y mostrar el panel correspondiente (id="tab-config" o id="config")
     const destino = tab.dataset.tab;
     const panelDestino = document.getElementById('tab-' + destino) || document.getElementById(destino);
-    
     if (panelDestino) {
       panelDestino.classList.add('active');
-      panelDestino.style.display = 'block'; 
-      
-      // Si entramos al reproductor, recalculamos el canvas de la calavera de inmediato
-      if (destino === 'player') {
-        setTimeout(redimensionarMonitor, 50);
-      }
-    } else {
-      console.warn(`Parchate™ Info: No se encontró el panel para la pestaña "${destino}". Verifica el ID en tu HTML.`);
+      panelDestino.style.display = 'block';
+      if (destino === 'player') setTimeout(redimensionarMonitor, 50);
     }
   });
 });
 
-// Asegurar el estado inicial de los paneles al arrancar
 document.querySelectorAll('.tab-panel').forEach(p => {
   if (!p.classList.contains('active')) p.style.display = 'none';
 });
@@ -681,8 +708,7 @@ document.querySelectorAll('.swatch').forEach(sw => {
   sw.classList.toggle('active', sw.dataset.color === state.theme.accent);
 });
 
-console.log('%cParchate™ listo y blindado contra anuncios 🎵', 'color:' + state.theme.accent + ';font-size:16px;font-weight:bold');
-
+console.log('%cParchate™ listo — SoundCloud activo 🎧', 'color:' + state.theme.accent + ';font-size:16px;font-weight:bold');
 
 // =======================================================================
 // MOTOR VISUAL: CALAVERA REALISTA 3D + NOTAS DESDE LA GARGANTA
@@ -697,7 +723,7 @@ let notasMusicalesArray = [];
 const ICONOS_NOTAS = ['♩', '♪', '♫', '♬', '♭', '♮'];
 
 const calaveraRealista = new Image();
-calaveraRealista.src = 'calavera.png'; 
+calaveraRealista.src = 'calavera.png';
 
 function redimensionarMonitor() {
   if (heartCanvas && heartCanvas.offsetWidth > 0) {
@@ -719,15 +745,13 @@ function engancharMonitorCardiaco() {
 }
 
 function generarNotaMusical(x, y, color) {
-  const angulo = (Math.random() * Math.PI * 0.6) + Math.PI * 1.1; 
+  const angulo = (Math.random() * Math.PI * 0.6) + Math.PI * 1.1;
   const velocidad = 2.0 + Math.random() * 3.5;
-  
   notasMusicalesArray.push({
-    x: x,
-    y: y,
+    x: x, y: y,
     texto: ICONOS_NOTAS[Math.floor(Math.random() * ICONOS_NOTAS.length)],
     vx: Math.cos(angulo) * velocidad,
-    vy: Math.sin(angulo) * velocidad - 0.8, 
+    vy: Math.sin(angulo) * velocidad - 0.8,
     opacidad: 1,
     tamano: 14 + Math.random() * 18,
     color: color
@@ -736,16 +760,10 @@ function generarNotaMusical(x, y, color) {
 
 function animarMonitorSignosVitales() {
   requestAnimationFrame(animarMonitorSignosVitales);
-  
   if (!heartCanvas || !heartCtx) return;
-  
   const W = heartCanvas.width;
   const H = heartCanvas.height;
-  
-  if (W === 0 && heartCanvas.offsetWidth > 0) {
-    redimensionarMonitor();
-    return;
-  }
+  if (W === 0 && heartCanvas.offsetWidth > 0) { redimensionarMonitor(); return; }
   
   heartCtx.fillStyle = 'rgba(13, 13, 13, 0.25)';
   heartCtx.fillRect(0, 0, W, H);
@@ -758,10 +776,8 @@ function animarMonitorSignosVitales() {
   
   const factorPulso = energiaBajos / 255;
   const colorActualApp = state.theme.accent || '#a78bfa';
-  
   const centroX = W / 2;
   const centroY = H / 2;
-
   const gargantaX = centroX + 15;
   const gargantaY = centroY + 40;
 
@@ -771,15 +787,8 @@ function animarMonitorSignosVitales() {
   
   for (let i = notasMusicalesArray.length - 1; i >= 0; i--) {
     const n = notasMusicalesArray[i];
-    n.x += n.vx;
-    n.y += n.vy;
-    n.opacidad -= 0.015;
-    
-    if (n.opacidad <= 0) {
-      notasMusicalesArray.splice(i, 1);
-      continue;
-    }
-    
+    n.x += n.vx; n.y += n.vy; n.opacidad -= 0.015;
+    if (n.opacidad <= 0) { notasMusicalesArray.splice(i, 1); continue; }
     heartCtx.save();
     heartCtx.globalAlpha = n.opacidad;
     heartCtx.fillStyle = n.color;
@@ -799,43 +808,30 @@ function animarMonitorSignosVitales() {
   heartCtx.globalAlpha = 0.88 + (factorPulso * 0.12);
 
   if (calaveraRealista.complete) {
-    heartCtx.drawImage(
-      calaveraRealista, 
-      centroX - anchoCalavera / 2, 
-      centroY - altoCalavera / 2 - 10, 
-      anchoCalavera, 
-      altoCalavera
-    );
+    heartCtx.drawImage(calaveraRealista, centroX - anchoCalavera / 2, centroY - altoCalavera / 2 - 10, anchoCalavera, altoCalavera);
   } else {
     heartCtx.fillStyle = colorActualApp;
     heartCtx.font = '13px sans-serif';
     heartCtx.fillText('Cargando arte...', centroX - 45, centroY);
   }
-  
   heartCtx.restore();
 
   if (state.currentIndex >= 0 && state.tracks[state.currentIndex]) {
     const trackActual = state.tracks[state.currentIndex];
-    
     heartCtx.save();
     heartCtx.fillStyle = '#ffffff';
     heartCtx.textAlign = 'center';
-    
     heartCtx.font = 'bold 14px sans-serif';
     heartCtx.fillText(trackActual.title, centroX, H - 25);
-    
     heartCtx.fillStyle = '#a3a3a3';
     heartCtx.font = '11px sans-serif';
     heartCtx.fillText(trackActual.artist || 'Desconocido', centroX, H - 10);
-    
     heartCtx.restore();
   }
 }
 
-// Inicializar ciclo de animación
 animarMonitorSignosVitales();
 
-// Inyección limpia del analizador dentro del método de reproducción original
 const funcionPlayOriginal = play;
 play = function() {
   funcionPlayOriginal();
