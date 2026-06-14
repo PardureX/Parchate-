@@ -1,5 +1,5 @@
 /* ============================================
-   PARCHATE™ — app.js (Buscador de Audio con SoundCloud)
+   PARCHATE™ — app.js (Buscador de Radio en Vivo)
    ============================================ */
 
 'use strict';
@@ -26,8 +26,8 @@ const state = {
   currentTime: 0
 };
 
-// Client ID público de SoundCloud (el mismo que usa su widget oficial)
-const SC_CLIENT_ID = 'a3e059563d7fd3372b49b37f00a00bcf';
+// API de Radio Browser — CORS abierto, sin key, estaciones de radio en vivo
+const RADIO_API = 'https://de1.api.radio-browser.info/json';
 
 // ============================================
 // WEB AUDIO API — cadena de nodos
@@ -128,8 +128,8 @@ function render() {
 
   const pct = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
   progressFill.style.width = pct.toFixed(2) + '%';
-  timeCurrentEl.textContent = formatTime(state.currentTime);
-  timeTotalEl.textContent   = formatTime(state.duration);
+  timeCurrentEl.textContent = state.isPlaying && state.duration === 0 ? '📻 En vivo' : formatTime(state.currentTime);
+  timeTotalEl.textContent   = state.duration > 0 ? formatTime(state.duration) : '∞';
 
   volumeSlider.value = state.volume;
 
@@ -191,7 +191,7 @@ function renderTracklist() {
         '<div class="track-name">' + escHtml(track.title) + '</div>' +
         '<div class="track-artist">' + escHtml(track.artist || 'Desconocido') + '</div>' +
       '</div>' +
-      '<span class="track-duration">' + formatTime(track.duration || 0) + '</span>';
+      '<span class="track-duration">' + (track.duration > 0 ? formatTime(track.duration) : '📻 En vivo') + '</span>';
     li.addEventListener('click', () => loadTrack(i, true));
     tracklist.appendChild(li);
   });
@@ -289,8 +289,8 @@ function loadFiles(files) {
 }
 
 // ============================================
-// BUSCADOR DE MÚSICA — SOUNDCLOUD API
-// Canciones completas, sin CORS
+// BUSCADOR DE RADIO EN VIVO — RADIO BROWSER API
+// CORS abierto, sin API key, miles de estaciones
 // ============================================
 async function buscarMusicaOnline() {
   const query = ytSearchInput.value.trim();
@@ -298,70 +298,73 @@ async function buscarMusicaOnline() {
 
   ytResults.innerHTML = `
     <div style="text-align:center;padding:2rem;color:var(--txt-3);font-size:14px">
-      🎵 Buscando en SoundCloud...
+      📻 Buscando estaciones de radio...
     </div>`;
 
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
-    const apiUrl = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=8&client_id=${SC_CLIENT_ID}`;
+    const apiUrl = `${RADIO_API}/stations/search?name=${encodeURIComponent(query)}&limit=10&hidebroken=true&order=clickcount&reverse=true`;
     
     const res = await fetch(apiUrl, { signal: controller.signal });
     clearTimeout(timeout);
 
     if (!res.ok) throw new Error(`Error del servidor: ${res.status}`);
 
-    const data = await res.json();
-    const tracks = data.collection || [];
+    const stations = await res.json();
 
-    if (!tracks || tracks.length === 0) {
+    if (!stations || stations.length === 0) {
       ytResults.innerHTML = `
         <div style="text-align:center;padding:2rem;color:var(--txt-3)">
-          🎵 No se encontraron resultados para "${escHtml(query)}"
+          📻 No se encontraron estaciones para "${escHtml(query)}"
+          <br><small style="display:block;margin-top:0.8rem;color:var(--txt-3)">Prueba con: rock, jazz, pop, cumbia, vallenato, salsa, reggae, classical, electronic, hip hop</small>
         </div>`;
       return;
     }
 
     ytResults.innerHTML = '';
 
-    tracks.forEach(track => {
-      const title = track.title || 'Sin título';
-      const artist = track.user ? track.user.username : 'Desconocido';
-      const duration = (track.duration || 0) / 1000;
-      const cover = track.artwork_url ? track.artwork_url.replace('large', 't300x300') : (track.user ? track.user.avatar_url : '');
-      const streamUrl = track.stream_url ? `${track.stream_url}?client_id=${SC_CLIENT_ID}` : '';
+    stations.forEach(station => {
+      if (!station.url_resolved && !station.url) return;
 
-      if (!streamUrl) return;
+      const name = station.name || 'Sin nombre';
+      const genre = station.tags || station.country || 'Desconocido';
+      const bitrate = station.bitrate || 0;
+      const listeners = station.clickcount || 0;
+      const favicon = station.favicon || '';
+      const streamUrl = station.url_resolved || station.url;
+      const codec = station.codec || 'MP3';
 
       const card = document.createElement('div');
       card.className = 'yt-result-card';
 
       card.innerHTML = `
-        <img src="${cover}" class="yt-card-thumb" alt="Carátula" 
-             onerror="this.style.display='none'">
-        <div class="yt-card-info">
-          <div class="yt-card-title">${escHtml(title)}</div>
-          <div class="yt-card-author">${escHtml(artist)}</div>
-          <div class="yt-card-duration">${formatTime(duration)}</div>
+        <div class="yt-card-thumb" style="display:flex;align-items:center;justify-content:center;background:var(--ac);font-size:32px;min-height:90px;overflow:hidden">
+          ${favicon ? `<img src="${favicon}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='📻'">` : '📻'}
         </div>
-        <button class="yt-card-add-btn">▶ Escuchar</button>
+        <div class="yt-card-info">
+          <div class="yt-card-title">${escHtml(name)}</div>
+          <div class="yt-card-author">${escHtml(genre)} · ${codec} ${bitrate > 0 ? bitrate + 'kbps' : ''}</div>
+          <div class="yt-card-duration">🎧 ${listeners.toLocaleString()} oyentes</div>
+        </div>
+        <button class="yt-card-add-btn">▶ Sintonizar</button>
       `;
 
       const agregarALista = () => {
         const nuevoTrack = {
           url: streamUrl,
-          title: title,
-          artist: artist,
-          duration: duration,
-          cover: cover
+          title: name,
+          artist: genre,
+          duration: 0,
+          cover: favicon
         };
 
         state.tracks.push(nuevoTrack);
         loadTrack(state.tracks.length - 1, true);
 
         card.querySelectorAll('.yt-card-add-btn').forEach(btn => {
-          btn.textContent = '🎵 Sonando';
+          btn.textContent = '📻 Sonando';
           btn.style.background = 'var(--ac)';
           btn.style.color = 'white';
         });
@@ -379,7 +382,7 @@ async function buscarMusicaOnline() {
     if (ytResults.children.length === 0) {
       ytResults.innerHTML = `
         <div style="text-align:center;padding:2rem;color:var(--txt-3)">
-          🎵 No se encontraron pistas reproducibles
+          📻 No se encontraron estaciones con stream disponible
         </div>`;
     }
 
@@ -424,7 +427,7 @@ function actualizarPantallaDeBloqueo(track) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title,
       artist: track.artist || 'Parchate™',
-      album: 'SoundCloud',
+      album: track.duration > 0 ? 'Parchate™' : 'Radio en vivo 📻',
       artwork: [
         { src: track.cover || 'https://images.unsplash.com/photo-1614680376593-902f74fa0d41?q=80&w=250&auto=format&fit=crop', sizes: '256x256', type: 'image/jpeg' }
       ]
@@ -534,14 +537,20 @@ progressWrap.addEventListener('click', (e) => {
 
 audioEl.addEventListener('timeupdate', () => {
   state.currentTime = audioEl.currentTime;
-  const pct = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
-  progressFill.style.width = pct.toFixed(2) + '%';
-  timeCurrentEl.textContent = formatTime(state.currentTime);
+  if (state.duration > 0) {
+    const pct = (state.currentTime / state.duration) * 100;
+    progressFill.style.width = pct.toFixed(2) + '%';
+    timeCurrentEl.textContent = formatTime(state.currentTime);
+  } else {
+    progressFill.style.width = '100%';
+    timeCurrentEl.textContent = '📻 En vivo';
+  }
 });
 
 audioEl.addEventListener('loadedmetadata', () => {
   state.duration = audioEl.duration;
-  timeTotalEl.textContent = formatTime(state.duration);
+  if (isNaN(state.duration) || !isFinite(state.duration)) state.duration = 0;
+  timeTotalEl.textContent = state.duration > 0 ? formatTime(state.duration) : '∞';
 });
 
 audioEl.addEventListener('ended', () => {
@@ -708,7 +717,7 @@ document.querySelectorAll('.swatch').forEach(sw => {
   sw.classList.toggle('active', sw.dataset.color === state.theme.accent);
 });
 
-console.log('%cParchate™ listo — SoundCloud activo 🎧', 'color:' + state.theme.accent + ';font-size:16px;font-weight:bold');
+console.log('%cParchate™ listo — Radio Browser activo 📻', 'color:' + state.theme.accent + ';font-size:16px;font-weight:bold');
 
 // =======================================================================
 // MOTOR VISUAL: CALAVERA REALISTA 3D + NOTAS DESDE LA GARGANTA
