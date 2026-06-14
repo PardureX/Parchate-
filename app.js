@@ -1,5 +1,5 @@
 /* ============================================
-   PARCHATE™ — app.js
+   PARCHATE™ — app.js (Actualizado con Buscador de Audio Libre)
    ============================================ */
 
 'use strict';
@@ -25,6 +25,9 @@ const state = {
   duration: 0,
   currentTime: 0
 };
+
+// Instancia pública y estable de Invidious (Filtro limpiador de anuncios)
+const INVIDIOUS_INSTANCE = 'https://inv.tux.digital'; 
 
 // ============================================
 // WEB AUDIO API — cadena de nodos
@@ -58,7 +61,7 @@ function initAudioContext() {
   trebleFilter.type = 'highshelf';
   trebleFilter.frequency.value = 8000;
 
-  // Conectar la cadena
+  // Conectar la cadena nativa
   sourceNode
     .connect(gainNode)
     .connect(bassFilter)
@@ -111,6 +114,11 @@ const coverPhotoBtn  = document.getElementById('coverPhotoBtn');
 const bgPhotoInput   = document.getElementById('bgPhotoInput');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 
+// Elementos del nuevo buscador
+const ytSearchInput  = document.getElementById('ytSearchInput');
+const ytSearchBtn    = document.getElementById('ytSearchBtn');
+const ytResults      = document.getElementById('ytResults');
+
 // ============================================
 // RENDER — actualiza la UI desde el estado
 // ============================================
@@ -146,6 +154,9 @@ function render() {
       coverImg.style.display = 'none';
       coverDefault.style.display = 'flex';
     }
+    
+    // Actualizar controles nativos de la pantalla de bloqueo en el celular
+    actualizarPantallaDeBloqueo(t);
   } else {
     songTitle.textContent  = 'Selecciona una canción';
     songArtist.textContent = '—';
@@ -172,7 +183,6 @@ function render() {
   document.documentElement.setAttribute('data-theme', state.theme.darkMode ? 'dark' : 'light');
 
   // --- Fondo personalizado ---
-  const coverZone = document.getElementById('coverZone');
   if (state.theme.bgPhoto) {
     coverDefault.style.backgroundImage = 'url(' + state.theme.bgPhoto + ')';
     coverDefault.style.backgroundSize = 'cover';
@@ -251,7 +261,7 @@ function loadFromStorage() {
 }
 
 // ============================================
-// CARGAR TRACKS
+// CARGAR TRACKS (LOCALES)
 // ============================================
 function loadFiles(files) {
   const fileArr = Array.from(files);
@@ -260,21 +270,18 @@ function loadFiles(files) {
   fileArr.forEach(file => {
     const url = URL.createObjectURL(file);
     const name = file.name.replace(/\.[^.]+$/, '');
-    const track = { url, title: name, artist: '', duration: 0, cover: null };
+    const track = { url, title: name, artist: 'Local', duration: 0, cover: null };
 
-    // Leer duración con audio temporal
     const tmpAudio = new Audio();
     tmpAudio.src = url;
     tmpAudio.addEventListener('loadedmetadata', () => {
       track.duration = tmpAudio.duration;
       loaded++;
       if (loaded === fileArr.length) {
-        state.tracks.push(...fileArr.map((_, i) => state.tracks[state.tracks.length - fileArr.length + i] || track));
         render();
       }
     }, { once: true });
 
-    // Intentar leer metadata ID3 con jsmediatags si está disponible
     if (window.jsmediatags) {
       window.jsmediatags.read(file, {
         onSuccess: function(tag) {
@@ -287,19 +294,113 @@ function loadFiles(files) {
             track.cover = 'data:' + pic.format + ';base64,' + btoa(base64);
           }
           render();
-        },
-        onError: function() {}
+        }
       });
     }
-
     state.tracks.push(track);
   });
 
   if (state.currentIndex < 0 && fileArr.length > 0) {
     loadTrack(0, false);
   }
-
   render();
+}
+
+// ============================================
+// LOGICA DEL MOTOR DE BÚSQUEDA (SIN ANUNCIOS)
+// ============================================
+async function buscarMusicaOnline() {
+  const query = ytSearchInput.value.trim();
+  if (!query) return;
+
+  ytResults.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--txt-3);font-size:14px">Buscando en el servidor limpio...</div>';
+
+  try {
+    // Consulta directa a la API de Invidious para buscar canciones
+    const res = await fetch(`${INVIDIOUS_INSTANCE}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+    const videos = await res.json();
+
+    if (!videos || videos.length === 0) {
+      ytResults.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--txt-3)">No se encontraron pistas limpias.</div>';
+      return;
+    }
+
+    ytResults.innerHTML = ''; // Limpiar el cargador
+
+    // Generar las tarjetas táctiles con los primeros 6 resultados
+    videos.slice(0, 6).forEach(video => {
+      const card = document.createElement('div');
+      card.className = 'yt-result-card';
+      
+      // Intentar obtener la miniatura de mayor resolución disponible
+      const thumbnail = video.videoThumbnails ? video.videoThumbnails.find(t => t.quality === 'medium')?.url || video.videoThumbnails[0].url : '';
+
+      card.innerHTML = `
+        <img src="${thumbnail}" class="yt-card-thumb" alt="Cover">
+        <div class="yt-card-info">
+          <div class="yt-card-title">${escHtml(video.title)}</div>
+          <div class="yt-card-author">${escHtml(video.author)}</div>
+          <div class="yt-card-duration">${formatTime(video.lengthSeconds)}</div>
+        </div>
+        <button class="yt-card-add-btn">▶ Escuchar</button>
+      `;
+
+      // Evento al dar clic a la tarjeta: Extrae el audio y lo manda a Parchate™
+      card.addEventListener('click', () => {
+        const nuevoTrack = {
+          // Generamos el stream de audio puro saltándonos todo el video y la publicidad
+          url: `${INVIDIOUS_INSTANCE}/latest_version?id=${video.videoId}&listen=1`,
+          title: video.title,
+          artist: video.author,
+          duration: video.lengthSeconds,
+          cover: thumbnail
+        };
+
+        // Agregar a la lista global y reproducir inmediatamente
+        state.tracks.push(nuevoTrack);
+        const indexAsignado = state.tracks.length - 1;
+        loadTrack(indexAsignado, true);
+        
+        // Alerta visual discreta en el botón
+        const btn = card.querySelector('.yt-card-add-btn');
+        btn.textContent = '🎵 Sonando';
+        btn.style.background = 'var(--ac)';
+      });
+
+      ytResults.appendChild(card);
+    });
+
+  } catch (error) {
+    ytResults.innerHTML = '<div style="text-align:center;padding:2rem;color:#f87171">Error de conexión con el motor. Intenta de nuevo.</div>';
+  }
+}
+
+// Escuchadores del buscador
+ytSearchBtn.addEventListener('click', buscarMusicaOnline);
+ytSearchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') buscarMusicaOnline();
+});
+
+// ============================================
+// MEDIASESSION API (ESCUCHAR CON PANTALLA APAGADA)
+// ============================================
+function actualizarPantallaDeBloqueo(track) {
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.artist || 'Parchate™',
+      album: 'Streaming Sin Anuncios',
+      artwork: [
+        { src: track.cover || 'https://images.unsplash.com/photo-1614680376593-902f74fa0d41?q=80&w=250&auto=format&fit=crop', sizes: '256x256', type: 'image/jpeg' }
+      ]
+    });
+
+    // Vincular botones externos físicos o de la pantalla de bloqueo
+    navigator.mediaSession.setActionHandler('play', play);
+    navigator.mediaSession.setActionHandler('pause', pause);
+    navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
+    navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
+  }
 }
 
 // ============================================
@@ -313,7 +414,7 @@ function loadTrack(index, autoPlay) {
   audioEl.volume = state.volume;
   state.isPlaying = false;
   state.currentTime = 0;
-  state.duration = 0;
+  state.duration = track.duration || 0;
   render();
   if (autoPlay) play();
 }
@@ -324,6 +425,7 @@ function play() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
   audioEl.play().then(() => {
     state.isPlaying = true;
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
     render();
   }).catch(() => {});
 }
@@ -331,6 +433,7 @@ function play() {
 function pause() {
   audioEl.pause();
   state.isPlaying = false;
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
   render();
 }
 
@@ -388,7 +491,6 @@ volumeSlider.addEventListener('input', () => {
   saveToStorage();
 });
 
-// Progreso — click para seek
 progressWrap.addEventListener('click', (e) => {
   if (!state.duration) return;
   const rect = progressWrap.querySelector('.progress-bar-bg').getBoundingClientRect();
@@ -396,15 +498,17 @@ progressWrap.addEventListener('click', (e) => {
   audioEl.currentTime = pct * state.duration;
 });
 
-// Actualizar progreso mientras suena
 audioEl.addEventListener('timeupdate', () => {
   state.currentTime = audioEl.currentTime;
-  render();
+  // Actualizar barra sin re-renderizar todo el DOM por optimización
+  const pct = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
+  progressFill.style.width = pct.toFixed(2) + '%';
+  timeCurrentEl.textContent = formatTime(state.currentTime);
 });
 
 audioEl.addEventListener('loadedmetadata', () => {
   state.duration = audioEl.duration;
-  render();
+  timeTotalEl.textContent = formatTime(state.duration);
 });
 
 audioEl.addEventListener('ended', () => {
@@ -450,7 +554,6 @@ trebleSlider.addEventListener('input', () => {
   render();
 });
 
-// Presets
 const PRESETS = {
   flat:     { bass: 0,   mid: 0,  treble: 0  },
   bass:     { bass: 8,   mid: 2,  treble: -2 },
@@ -491,7 +594,6 @@ themeToggleBtn.addEventListener('click', () => {
   render();
 });
 
-// Foto de fondo
 coverPhotoBtn.addEventListener('click', () => bgPhotoInput.click());
 bgPhotoInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
@@ -505,26 +607,20 @@ bgPhotoInput.addEventListener('change', (e) => {
 });
 
 // ============================================
-// EVENTOS — CARGAR CANCIONES
+// EVENTOS — CARGAR CANCIONES (LOCALES)
 // ============================================
 loadZone.addEventListener('click', () => fileInput.click());
-
 fileInput.addEventListener('change', (e) => {
-  if (e.target.files.length > 0) {
-    loadFiles(e.target.files);
-  }
+  if (e.target.files.length > 0) loadFiles(e.target.files);
 });
 
-// Drag & drop
 loadZone.addEventListener('dragover', (e) => {
   e.preventDefault();
   loadZone.style.borderColor = state.theme.accent;
 });
-
 loadZone.addEventListener('dragleave', () => {
   loadZone.style.borderColor = '';
 });
-
 loadZone.addEventListener('drop', (e) => {
   e.preventDefault();
   loadZone.style.borderColor = '';
@@ -533,19 +629,34 @@ loadZone.addEventListener('drop', (e) => {
 });
 
 // ============================================
-// TABS
+// RE-ESTRUCTURACIÓN DINÁMICA DE PESTAÑAS (TABS)
+// Soluciona el bug de navegación ocultando y mostrando paneles explícitamente
 // ============================================
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => {
+      p.classList.remove('active');
+      p.style.display = 'none'; // Apaga por completo el panel anterior
+    });
+    
     tab.classList.add('active');
-    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    const panelDestino = document.getElementById('tab-' + tab.dataset.tab);
+    if (panelDestino) {
+      panelDestino.classList.add('active');
+      // Si es el panel del reproductor o ecualizador, puedes usar 'block'.
+      panelDestino.style.display = 'block'; 
+    }
   });
 });
 
+// Asegurar que al arrancar solo se vea la pestaña activa por defecto
+document.querySelectorAll('.tab-panel').forEach(p => {
+  if (!p.classList.contains('active')) p.style.display = 'none';
+});
+
 // ============================================
-// TECLADO (para cuando estén en PC)
+// TECLADO (PC)
 // ============================================
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
@@ -560,9 +671,8 @@ document.addEventListener('keydown', (e) => {
 loadFromStorage();
 render();
 
-// Actualizar swatch activo según color guardado
 document.querySelectorAll('.swatch').forEach(sw => {
   sw.classList.toggle('active', sw.dataset.color === state.theme.accent);
 });
 
-console.log('%cParchate™ listo 🎵', 'color:' + state.theme.accent + ';font-size:16px;font-weight:bold');
+console.log('%cParchate™ listo y blindado contra anuncios 🎵', 'color:' + state.theme.accent + ';font-size:16px;font-weight:bold');
