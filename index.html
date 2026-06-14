@@ -155,3 +155,60 @@
         <div class="eq-block">
           <div class="eq-block-header">
             <span class="eq-block-title">Color de la app</span>
+          </div>
+          <div class="color-swatches">
+            <button class="swatch active" data-color="#a78bfa" style="background:#a78bfa" aria-label="Morado"></button>
+            <button class="swatch" data-color="#34d399" style="background:#34d399" aria-label="Verde"></button>
+            <button class="swatch" data-color="#f472b6" style="background:#f472b6" aria-label="Rosa"></button>
+            <button class="swatch" data-color="#fb923c" style="background:#fb923c" aria-label="Naranja"></button>
+            <button class="swatch" data-color="#38bdf8" style="background:#38bdf8" aria-label="Azul"></button>
+            <button class="swatch" data-color="#facc15" style="background:#facc15" aria-label="Amarillo"></button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-playlist">
+      <div class="playlist-panel">
+
+        <div class="load-zone" id="loadZone">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p class="load-text">Toca para cargar canciones</p>
+          <p class="load-hint">MP3, WAV, OGG, M4A</p>
+          <input type="file" id="fileInput" accept="audio/*" multiple style="display:none">
+        </div>
+
+        <ul class="tracklist" id="tracklist"></ul>
+
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-search">
+      <div class="search-panel">
+        
+        <div class="yt-search-box">
+          <span class="yt-search-title">Buscador global de música</span>
+          
+          <div class="yt-search-field">
+            <input type="text" id="ytSearchInput" placeholder="Busca cumbia, artistas, pistas..." autocomplete="off">
+            
+            <button id="ytSearchBtn" aria-label="Buscar música">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
+          </div>
+          
+          <div id="ytResults" class="yt-results-container"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </div><audio id="audioEl" preload="metadata"></audio>
+
+  <script src="app.js"></script>
+</body>
+</html>
