@@ -27,7 +27,7 @@ const state = {
 };
 
 // Instancia pública y estable de Invidious (Filtro limpiador de anuncios)
-const INVIDIOUS_INSTANCE = 'https://inv.tux.digital'; 
+const INVIDIOUS_INSTANCE = 'https://yewtu.be'; 
 
 // ============================================
 // WEB AUDIO API — cadena de nodos
@@ -316,7 +316,7 @@ async function buscarMusicaOnline() {
   ytResults.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--txt-3);font-size:14px">Buscando en el servidor limpio...</div>';
 
   try {
-    const res = await fetch(`${INVIDIOUS_INSTANCE}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+    const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(INVIDIOUS_INSTANCE + '/api/v1/search?q=' + encodeURIComponent(query) + '&type=video')}`);
     const videos = await res.json();
 
     if (!videos || videos.length === 0) {
