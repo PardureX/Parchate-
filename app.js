@@ -316,7 +316,6 @@ async function buscarMusicaOnline() {
   ytResults.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--txt-3);font-size:14px">Buscando en el servidor limpio...</div>';
 
   try {
-    // Consulta directa a la API de Invidious para buscar canciones
     const res = await fetch(`${INVIDIOUS_INSTANCE}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
     const videos = await res.json();
 
@@ -325,14 +324,12 @@ async function buscarMusicaOnline() {
       return;
     }
 
-    ytResults.innerHTML = ''; // Limpiar el cargador
+    ytResults.innerHTML = ''; 
 
-    // Generar las tarjetas táctiles con los primeros 6 resultados
     videos.slice(0, 6).forEach(video => {
       const card = document.createElement('div');
       card.className = 'yt-result-card';
       
-      // Intentar obtener la miniatura de mayor resolución disponible
       const thumbnail = video.videoThumbnails ? video.videoThumbnails.find(t => t.quality === 'medium')?.url || video.videoThumbnails[0].url : '';
 
       card.innerHTML = `
@@ -345,10 +342,8 @@ async function buscarMusicaOnline() {
         <button class="yt-card-add-btn">▶ Escuchar</button>
       `;
 
-      // Evento al dar clic a la tarjeta: Extrae el audio y lo manda a Parchate™
       card.addEventListener('click', () => {
         const nuevoTrack = {
-          // Generamos el stream de audio puro saltándonos todo el video y la publicidad
           url: `${INVIDIOUS_INSTANCE}/latest_version?id=${video.videoId}&listen=1`,
           title: video.title,
           artist: video.author,
@@ -356,12 +351,10 @@ async function buscarMusicaOnline() {
           cover: thumbnail
         };
 
-        // Agregar a la lista global y reproducir inmediatamente
         state.tracks.push(nuevoTrack);
         const indexAsignado = state.tracks.length - 1;
         loadTrack(indexAsignado, true);
         
-        // Alerta visual discreta en el botón
         const btn = card.querySelector('.yt-card-add-btn');
         btn.textContent = '🎵 Sonando';
         btn.style.background = 'var(--ac)';
@@ -375,7 +368,6 @@ async function buscarMusicaOnline() {
   }
 }
 
-// Escuchadores del buscador
 ytSearchBtn.addEventListener('click', buscarMusicaOnline);
 ytSearchInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') buscarMusicaOnline();
@@ -395,7 +387,6 @@ function actualizarPantallaDeBloqueo(track) {
       ]
     });
 
-    // Vincular botones externos físicos o de la pantalla de bloqueo
     navigator.mediaSession.setActionHandler('play', play);
     navigator.mediaSession.setActionHandler('pause', pause);
     navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
@@ -500,7 +491,6 @@ progressWrap.addEventListener('click', (e) => {
 
 audioEl.addEventListener('timeupdate', () => {
   state.currentTime = audioEl.currentTime;
-  // Actualizar barra sin re-renderizar todo el DOM por optimización
   const pct = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
   progressFill.style.width = pct.toFixed(2) + '%';
   timeCurrentEl.textContent = formatTime(state.currentTime);
@@ -630,27 +620,43 @@ loadZone.addEventListener('drop', (e) => {
 
 // ============================================
 // RE-ESTRUCTURACIÓN DINÁMICA DE PESTAÑAS (TABS)
-// Soluciona el bug de navegación ocultando y mostrando paneles explícitamente
+// Corrección: Soporte universal para la rueda de configuraciones
 // ============================================
-document.querySelectorAll('.tab').forEach(tab => {
+const elementosNavegacion = document.querySelectorAll('.tab, #configBtn, [data-tab="config"]');
+
+elementosNavegacion.forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    // 1. Quitar estado activo a todos los botones de navegación
+    elementosNavegacion.forEach(t => t.classList.remove('active'));
+    
+    // 2. Ocultar todos los paneles de la app por completo
     document.querySelectorAll('.tab-panel').forEach(p => {
       p.classList.remove('active');
-      p.style.display = 'none'; // Apaga por completo el panel anterior
+      p.style.display = 'none'; 
     });
     
+    // 3. Activar visualmente el botón presionado
     tab.classList.add('active');
-    const panelDestino = document.getElementById('tab-' + tab.dataset.tab);
+    
+    // 4. Buscar y mostrar el panel correspondiente (id="tab-config" o id="config")
+    const destino = tab.dataset.tab;
+    const panelDestino = document.getElementById('tab-' + destino) || document.getElementById(destino);
+    
     if (panelDestino) {
       panelDestino.classList.add('active');
-      // Si es el panel del reproductor o ecualizador, puedes usar 'block'.
       panelDestino.style.display = 'block'; 
+      
+      // Si entramos al reproductor, recalculamos el canvas de la calavera de inmediato
+      if (destino === 'player') {
+        setTimeout(redimensionarMonitor, 50);
+      }
+    } else {
+      console.warn(`Parchate™ Info: No se encontró el panel para la pestaña "${destino}". Verifica el ID en tu HTML.`);
     }
   });
 });
 
-// Asegurar que al arrancar solo se vea la pestaña activa por defecto
+// Asegurar el estado inicial de los paneles al arrancar
 document.querySelectorAll('.tab-panel').forEach(p => {
   if (!p.classList.contains('active')) p.style.display = 'none';
 });
@@ -676,3 +682,162 @@ document.querySelectorAll('.swatch').forEach(sw => {
 });
 
 console.log('%cParchate™ listo y blindado contra anuncios 🎵', 'color:' + state.theme.accent + ';font-size:16px;font-weight:bold');
+
+
+// =======================================================================
+// MOTOR VISUAL: CALAVERA REALISTA 3D + NOTAS DESDE LA GARGANTA
+// =======================================================================
+const heartCanvas = document.getElementById('heartMonitorCanvas');
+const heartCtx = heartCanvas ? heartCanvas.getContext('2d') : null;
+
+let heartAnalyser = null;
+let heartDataArray = [];
+let notasMusicalesArray = [];
+
+const ICONOS_NOTAS = ['♩', '♪', '♫', '♬', '♭', '♮'];
+
+const calaveraRealista = new Image();
+calaveraRealista.src = 'calavera.png'; 
+
+function redimensionarMonitor() {
+  if (heartCanvas && heartCanvas.offsetWidth > 0) {
+    heartCanvas.width = heartCanvas.offsetWidth;
+    heartCanvas.height = heartCanvas.offsetHeight;
+  }
+}
+window.addEventListener('resize', redimensionarMonitor);
+setTimeout(redimensionarMonitor, 100);
+
+function engancharMonitorCardiaco() {
+  if (audioCtx && !heartAnalyser) {
+    heartAnalyser = audioCtx.createAnalyser();
+    heartAnalyser.fftSize = 64;
+    const bufferLength = heartAnalyser.frequencyBinCount;
+    heartDataArray = new Uint8Array(bufferLength);
+    if (trebleFilter) trebleFilter.connect(heartAnalyser);
+  }
+}
+
+function generarNotaMusical(x, y, color) {
+  const angulo = (Math.random() * Math.PI * 0.6) + Math.PI * 1.1; 
+  const velocidad = 2.0 + Math.random() * 3.5;
+  
+  notasMusicalesArray.push({
+    x: x,
+    y: y,
+    texto: ICONOS_NOTAS[Math.floor(Math.random() * ICONOS_NOTAS.length)],
+    vx: Math.cos(angulo) * velocidad,
+    vy: Math.sin(angulo) * velocidad - 0.8, 
+    opacidad: 1,
+    tamano: 14 + Math.random() * 18,
+    color: color
+  });
+}
+
+function animarMonitorSignosVitales() {
+  requestAnimationFrame(animarMonitorSignosVitales);
+  
+  if (!heartCanvas || !heartCtx) return;
+  
+  const W = heartCanvas.width;
+  const H = heartCanvas.height;
+  
+  if (W === 0 && heartCanvas.offsetWidth > 0) {
+    redimensionarMonitor();
+    return;
+  }
+  
+  heartCtx.fillStyle = 'rgba(13, 13, 13, 0.25)';
+  heartCtx.fillRect(0, 0, W, H);
+  
+  let energiaBajos = 0;
+  if (heartAnalyser && state.isPlaying) {
+    heartAnalyser.getByteFrequencyData(heartDataArray);
+    energiaBajos = (heartDataArray[0] + heartDataArray[1] + heartDataArray[2]) / 3;
+  }
+  
+  const factorPulso = energiaBajos / 255;
+  const colorActualApp = state.theme.accent || '#a78bfa';
+  
+  const centroX = W / 2;
+  const centroY = H / 2;
+
+  const gargantaX = centroX + 15;
+  const gargantaY = centroY + 40;
+
+  if (factorPulso > 0.32 && Math.random() < 0.5) {
+    generarNotaMusical(gargantaX, gargantaY, colorActualApp);
+  }
+  
+  for (let i = notasMusicalesArray.length - 1; i >= 0; i--) {
+    const n = notasMusicalesArray[i];
+    n.x += n.vx;
+    n.y += n.vy;
+    n.opacidad -= 0.015;
+    
+    if (n.opacidad <= 0) {
+      notasMusicalesArray.splice(i, 1);
+      continue;
+    }
+    
+    heartCtx.save();
+    heartCtx.globalAlpha = n.opacidad;
+    heartCtx.fillStyle = n.color;
+    heartCtx.font = `bold ${n.tamano}px sans-serif`;
+    heartCtx.shadowBlur = 10;
+    heartCtx.shadowColor = n.color;
+    heartCtx.fillText(n.texto, n.x, n.y);
+    heartCtx.restore();
+  }
+  
+  const anchoCalavera = 165 + (factorPulso * 30);
+  const altoCalavera = 165 + (factorPulso * 30);
+  
+  heartCtx.save();
+  heartCtx.shadowBlur = 20 + (factorPulso * 25);
+  heartCtx.shadowColor = colorActualApp;
+  heartCtx.globalAlpha = 0.88 + (factorPulso * 0.12);
+
+  if (calaveraRealista.complete) {
+    heartCtx.drawImage(
+      calaveraRealista, 
+      centroX - anchoCalavera / 2, 
+      centroY - altoCalavera / 2 - 10, 
+      anchoCalavera, 
+      altoCalavera
+    );
+  } else {
+    heartCtx.fillStyle = colorActualApp;
+    heartCtx.font = '13px sans-serif';
+    heartCtx.fillText('Cargando arte...', centroX - 45, centroY);
+  }
+  
+  heartCtx.restore();
+
+  if (state.currentIndex >= 0 && state.tracks[state.currentIndex]) {
+    const trackActual = state.tracks[state.currentIndex];
+    
+    heartCtx.save();
+    heartCtx.fillStyle = '#ffffff';
+    heartCtx.textAlign = 'center';
+    
+    heartCtx.font = 'bold 14px sans-serif';
+    heartCtx.fillText(trackActual.title, centroX, H - 25);
+    
+    heartCtx.fillStyle = '#a3a3a3';
+    heartCtx.font = '11px sans-serif';
+    heartCtx.fillText(trackActual.artist || 'Desconocido', centroX, H - 10);
+    
+    heartCtx.restore();
+  }
+}
+
+// Inicializar ciclo de animación
+animarMonitorSignosVitales();
+
+// Inyección limpia del analizador dentro del método de reproducción original
+const funcionPlayOriginal = play;
+play = function() {
+  funcionPlayOriginal();
+  engancharMonitorCardiaco();
+};
